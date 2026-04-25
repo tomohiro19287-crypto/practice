@@ -12,7 +12,7 @@ def add_record(data: dict) -> str:
 
     properties = {
         "豆の種類": {
-            "title": [{"text": {"content": data["bean"]}}]
+            "rich_text": [{"text": {"content": data["bean"]}}]
         },
         "挽き目": {
             "number": data["grind"]
