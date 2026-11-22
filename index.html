@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>家計簿</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--text:#222;--sub:#777;--line:#e5e7eb;--inc:#2a9d8f;--exp:#e76f51;--accent:#3b6fd4}
+@media(prefers-color-scheme:dark){:root{--bg:#15171a;--card:#1f2226;--text:#eee;--sub:#9aa;--line:#33383d;--inc:#4cc3b3;--exp:#f08a6d;--accent:#7aa2f7}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 12px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid var(--line)}
+.month{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.month button{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:16px;cursor:pointer}
+.month strong{font-size:18px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.sum small{display:block;color:var(--sub);font-size:12px}
+.sum b{font-size:17px}
+.inc{color:var(--inc)}.exp{color:var(--exp)}
+form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+form .full{grid-column:1/-1}
+input,select,button.primary{font:inherit;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);width:100%}
+.seg{display:flex;gap:6px}
+.seg label{flex:1;text-align:center;padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.seg input{display:none}
+.seg input:checked+span{font-weight:700}
+.seg label:has(input:checked){background:var(--accent);color:#fff;border-color:var(--accent)}
+button.primary{background:var(--accent);color:#fff;border:0;cursor:pointer;font-weight:700}
+.bar{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+.bar .n{width:72px}.bar .t{flex:1;height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--exp)}
+.bar .v{width:84px;text-align:right}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+li:last-child{border:0}
+li .d{color:var(--sub);font-size:12px;width:40px}
+li .m{flex:1;min-width:0}li .m small{color:var(--sub);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+li button{background:none;border:0;color:var(--sub);font-size:18px;cursor:pointer}
+.empty{color:var(--sub);text-align:center;padding:12px}
+h2{font-size:14px;margin:0 0 8px;color:var(--sub)}
+.tools{display:flex;gap:8px;justify-content:flex-end}
+.tools button{background:none;border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>📒 家計簿</h1>
+<div class="month">
+  <button id="prev" aria-label="前月">‹</button><strong id="label"></strong><button id="next" aria-label="翌月">›</button>
+</div>
+<div class="card sum">
+  <div><small>収入</small><b class="inc" id="sInc"></b></div>
+  <div><small>支出</small><b class="exp" id="sExp"></b></div>
+  <div><small>収支</small><b id="sBal"></b></div>
+</div>
+<div class="card">
+  <form id="form">
+    <div class="seg full">
+      <label><input type="radio" name="type" value="exp" checked><span>支出</span></label>
+      <label><input type="radio" name="type" value="inc"><span>収入</span></label>
+    </div>
+    <input type="date" name="date" required>
+    <input type="number" name="amount" placeholder="金額（円）" min="1" step="1" required inputmode="numeric">
+    <select name="cat" class="full"></select>
+    <input type="text" name="memo" placeholder="メモ（任意）" class="full" maxlength="60">
+    <button class="primary full">追加</button>
+  </form>
+</div>
+<div class="card"><h2>カテゴリ別支出</h2><div id="cats"></div></div>
+<div class="card"><h2>履歴</h2><ul id="list"></ul></div>
+<div class="tools"><button id="csv">CSV出力</button><button id="clear">全削除</button></div>
+</main>
+<script>
+const CATS={exp:["食費","日用品","交通","住居","光熱費","通信","娯楽","医療","衣服","その他"],inc:["給与","賞与","副収入","その他"]};
+const KEY="kakeibo.v1";
+let items=[];try{items=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(items))}catch(e){}};
+const $=id=>document.getElementById(id), f=$("form");
+const yen=n=>"¥"+n.toLocaleString("ja-JP");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+let cur=today().slice(0,7);
+f.date.value=today();
+
+function fillCats(){const t=f.type.value;f.cat.innerHTML=CATS[t].map(c=>`<option>${c}</option>`).join("")}
+f.querySelectorAll("[name=type]").forEach(r=>r.onchange=fillCats);fillCats();
+
+function shift(n){let[y,m]=cur.split("-").map(Number);m+=n;if(m<1){m=12;y--}if(m>12){m=1;y++}cur=y+"-"+String(m).padStart(2,"0");render()}
+$("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);
+
+f.onsubmit=e=>{e.preventDefault();
+  const amount=Math.floor(+f.amount.value);if(!(amount>0))return;
+  items.push({id:Date.now()+Math.random(),type:f.type.value,date:f.date.value,amount,cat:f.cat.value,memo:f.memo.value.trim()});
+  save();cur=f.date.value.slice(0,7);f.amount.value="";f.memo.value="";render()};
+
+function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function render(){
+  const [y,m]=cur.split("-");$("label").textContent=`${y}年${+m}月`;
+  const mi=items.filter(i=>i.date.startsWith(cur)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+  const inc=mi.filter(i=>i.type=="inc").reduce((s,i)=>s+i.amount,0);
+  const exp=mi.filter(i=>i.type=="exp").reduce((s,i)=>s+i.amount,0);
+  $("sInc").textContent=yen(inc);$("sExp").textContent=yen(exp);
+  const bal=inc-exp;$("sBal").textContent=(bal<0?"-":"")+yen(Math.abs(bal));$("sBal").className=bal<0?"exp":"inc";
+  const by={};mi.filter(i=>i.type=="exp").forEach(i=>by[i.cat]=(by[i.cat]||0)+i.amount);
+  const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  $("cats").innerHTML=rows.length?rows.map(([c,v])=>`<div class="bar"><span class="n">${esc(c)}</span><span class="t"><i style="width:${v/exp*100}%"></i></span><span class="v">${yen(v)}</span></div>`).join(""):'<div class="empty">データなし</div>';
+  $("list").innerHTML=mi.length?mi.map(i=>`<li><span class="d">${i.date.slice(5).replace("-","/")}</span><span class="m">${esc(i.cat)}<small>${esc(i.memo)}</small></span><b class="${i.type}">${i.type=="exp"?"-":"+"}${yen(i.amount)}</b><button data-id="${i.id}" aria-label="削除">×</button></li>`).join(""):'<div class="empty">この月の記録はありません</div>';
+}
+$("list").onclick=e=>{const id=e.target.dataset.id;if(!id)return;items=items.filter(i=>String(i.id)!==id);save();render()};
+$("clear").onclick=()=>{if(confirm("全データを削除しますか？")){items=[];save();render()}};
+$("csv").onclick=()=>{
+  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const csv="日付,種別,カテゴリ,金額,メモ\n"+[...items].sort((a,b)=>a.date.localeCompare(b.date)).map(i=>[i.date,i.type=="exp"?"支出":"収入",q(i.cat),i.amount,q(i.memo)].join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv"}));a.download="kakeibo.csv";a.click()};
+render();
+</script>
+</body>
+</html>
